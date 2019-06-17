@@ -8,18 +8,29 @@ start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-	{ok, []}.
+	{ok, dict:new()}.
 
-handle_call({connect, Socket}, _From, Users) ->
-	{reply, ok, [Socket|Users]};
+handle_call({try_log_in, Username, Socket}, _From, Users) ->
+	{Reply, NewUsers} = case dict:find(Username, Users) of
+		{ok, _} -> {already_taken, Users};
+		error ->
+			gen_server:cast(self(), {connected, Username}),
+			{ok, dict:store(Username, Socket, Users)}
+		end,
+	{reply, Reply, NewUsers};
 handle_call(_E, _From, State) ->
 	{noreply, State}.
 
-handle_cast({disconnect, Socket}, Users) ->
-	broadcast(Socket, "Someone left the chat.", Users),
-	{noreply, Users -- [Socket]};
-handle_cast({say, Socket, Msg}, Users) ->
-	broadcast(Socket, Msg, Users),
+handle_cast({connected, Username}, Users) ->
+	broadcast(Username, Username ++ " joined the chat.", Users),
+	{noreply, Users};
+handle_cast({disconnected, ""}, Users) ->
+	{noreply, Users};
+handle_cast({disconnected, Username}, Users) ->
+	broadcast(Username, Username ++ " left the chat.", Users),
+	{noreply, dict:erase(Username, Users)};
+handle_cast({say, Username, Msg}, Users) ->
+	broadcast(Username, Username ++ ": " ++ Msg, Users),
 	{noreply, Users}.
 
 handle_info(_E, S) ->
@@ -34,6 +45,11 @@ terminate(Reason, _State) ->
 	io:format("Terminate reason: ~p~n", [Reason]).
 
 %% Sends a message to the client.
-broadcast(Sender, Msg, Users) ->
-	Receivers = [Socket || Socket <- Users, Socket =/= Sender],
+broadcast(SenderUsername, Msg, Users) ->
+	Receivers = dict:fold(fun (Username, Socket, Acc) ->
+		case Username of
+			SenderUsername -> Acc;
+			_ -> [Socket|Acc]
+		end
+		end, [], Users),
 	lists:foreach(fun(Socket) -> mc_client:send(Socket, Msg) end, Receivers).
