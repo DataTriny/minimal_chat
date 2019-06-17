@@ -29,7 +29,8 @@ handle_cast(accept, S = #state{socket = ListenSocket}) ->
 handle_info({tcp, Socket, Str}, S = #state{logged_in = false}) ->
 	Username = line(Str),
 	NewState = case gen_server:call(mc_server, {try_log_in, Username, Socket}) of
-		ok ->
+		{ok, PreviousMessages} ->
+			lists:foreach(fun(Msg) -> send(Socket, Msg) end, PreviousMessages),
 			send(Socket, "Hello " ++ Username ++ "!"),
 			#state{username = Username, logged_in = true, socket = Socket};
 		already_taken ->
@@ -39,7 +40,7 @@ handle_info({tcp, Socket, Str}, S = #state{logged_in = false}) ->
 	{noreply, NewState};
 handle_info({tcp, Socket, Str}, S = #state{username = Username, logged_in = true}) ->
 	Msg = line(Str),
-	refresh_socket(Socket),
+	send(Socket, "\r"),
 	gen_server:cast(mc_server, {say, Username, Msg}),
 	{noreply, S};
 handle_info({tcp_closed, _Socket}, S) ->
@@ -66,11 +67,8 @@ terminate(Reason, _S = #state{username = Username, socket = Socket}) ->
 line(Str) ->
 	string:chomp(Str).
 
-refresh_socket(Socket) ->
-	ok = inet:setopts(Socket, [{active, once}]).
-
 %% Sends a message to the client.
 send(Socket, Msg) ->
 	ok = gen_tcp:send(Socket, Msg ++ "\r\n"),
-	refresh_socket(Socket),
+	ok = inet:setopts(Socket, [{active, once}]),
 	ok.
