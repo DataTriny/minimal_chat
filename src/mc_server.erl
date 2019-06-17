@@ -6,6 +6,21 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
+-export([disconnect/1, say/2, try_log_in/2]).
+
+%%% Public API
+
+%% Notify the server that a client has disconnected.
+disconnect(Username) ->
+	gen_server:cast(mc_server, {disconnected, Username}).
+
+%% Notify the server that a client sent a message.
+say(Username, Msg) ->
+	gen_server:cast(mc_server, {say, Username, Msg}).
+
+%% Try to register a client with his/her username, ensuring that it has not already been taken.
+try_log_in(Username, Socket) ->
+	gen_server:call(mc_server, {try_log_in, Username, Socket}).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -50,7 +65,9 @@ terminate(normal, _State) ->
 terminate(Reason, _State) ->
 	io:format("Terminate reason: ~p~n", [Reason]).
 
-%% Sends a message to the client.
+%%% Helper functions
+
+%% Sends a message to all connected clients, except the sender itself.
 broadcast(SenderUsername, Msg, Users) ->
 	Receivers = dict:fold(fun (Username, Socket, Acc) ->
 		case Username of
