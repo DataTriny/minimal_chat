@@ -1,6 +1,6 @@
 {application, minimal_chat,
 	[{description, "A minimalist TCP chat server."},
-	{vsn, "0.3"},
+	{vsn, "0.4"},
 	{modules, [minimal_chat, mc_client, mc_clients_sup, mc_server, mc_server_sup]},
 	{applications, [kernel, stdlib]},
 	{mod, {minimal_chat, []}},

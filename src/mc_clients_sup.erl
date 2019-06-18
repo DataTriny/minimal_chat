@@ -2,7 +2,7 @@
 -module(mc_clients_sup).
 -behavior(supervisor).
 
--export([start_link/0, start_socket/0]).
+-export([start_link/0]).
 -export([init/1]).
 
 start_link() ->
@@ -11,17 +11,16 @@ start_link() ->
 init([]) ->
 	{ok, Port} = application:get_env(port),
 	{ok, ListenSocket} = gen_tcp:listen(Port, [{active, once}, {packet, line}]),
-	spawn_link(fun empty_listeners/0),
+	spawn_link(fun() -> listen(ListenSocket) end),
 	{ok, {{simple_one_for_one, 60, 3600},
 		[{mc_client,
-		{mc_client, start_link, [ListenSocket]},
+		{mc_client, start_link, []},
 		temporary, 5000, worker, [mc_client]}
 		]}}.
 
-start_socket() ->
-	supervisor:start_child(?MODULE, []).
-
-%% Start with 10 listeners so that multiple incomming connections can be started at once.
-empty_listeners() ->
-	[start_socket() || _ <- lists:seq(1, 10)],
-	ok.
+listen(ListenSocket) ->
+	{ok, AcceptSocket} = gen_tcp:accept(ListenSocket),
+	{ok, ChildPid} = supervisor:start_child(?MODULE, [AcceptSocket]),
+	ok = gen_tcp:controlling_process(AcceptSocket, ChildPid),
+	mc_client:ask_for_username(ChildPid),
+	listen(ListenSocket).

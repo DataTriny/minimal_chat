@@ -3,13 +3,16 @@
 
 -record(state, {username = "",
 	logged_in = false,
-	socket}). % The current socket (either the listening socket or the remote one).
+	socket}). % The remote socket.
  
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
--export([disconnect/1, send/2]).
+-export([ask_for_username/1, disconnect/1, send/2]).
 
 %%% Public API
+
+ask_for_username(Pid) ->
+	gen_server:cast(Pid, ask_for_username).
 
 %% Disconnects an user.
 disconnect(#state{username = Username, socket = Socket}) ->
@@ -23,22 +26,19 @@ send(Socket, Msg) ->
 	ok = inet:setopts(Socket, [{active, once}]),
 	ok.
 
-start_link(ListenSocket) ->
-	gen_server:start_link(?MODULE, ListenSocket, []).
+start_link(Socket) ->
+	gen_server:start_link(?MODULE, Socket, []).
 
-init(ListenSocket) ->
+init(Socket) ->
 	process_flag(trap_exit, true),
-	gen_server:cast(self(), accept),
-	{ok, #state{socket = ListenSocket}}.
+	{ok, #state{socket = Socket}}.
 
 handle_call(_E, _From, State) ->
 	{noreply, State}.
 
-handle_cast(accept, S = #state{socket = ListenSocket}) ->
-	{ok, AcceptSocket} = gen_tcp:accept(ListenSocket),
-	mc_clients_sup:start_socket(),
-	send(AcceptSocket, "Welcome! Please choose an username."),
-	{noreply, S#state{socket = AcceptSocket}}.
+handle_cast(ask_for_username, S = #state{socket = Socket}) ->
+	send(Socket, "Welcome! Please choose an username."),
+	{noreply, S}.
 
 handle_info({tcp, Socket, Str}, S = #state{logged_in = false}) ->
 	Username = line(Str),
