@@ -11,6 +11,7 @@
 
 %%% Public API
 
+%% Starts the login process by sending the welcome message to the newly connected user.
 ask_for_username(Pid) ->
 	gen_server:cast(Pid, ask_for_username).
 
